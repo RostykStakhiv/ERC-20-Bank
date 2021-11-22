@@ -1,4 +1,6 @@
 var RLP = require("rlp");
+const utils = require("../utils/utils.js");
+const truffleAssert = require("truffle-assertions");
 
 const ERC20Bank = artifacts.require("ERC20Bank");
 const MockToken = artifacts.require("MockERC20Token");
@@ -8,10 +10,12 @@ contract("ERC20Bank", async (accounts) => {
   var erc20Token;
   let contractDeployer = accounts[0];
 
-  const mockTokenSupply = BigInt(10000 * 10 ** 18);
-
-  const rewardPoolSize = mockTokenSupply / BigInt(10);
+  let tokenDecimals = new web3.utils.BN(10).pow(new web3.utils.BN(18));
+  let rewardPoolSize = new web3.utils.BN(1000).mul(tokenDecimals);
+  let userTokenPoolSize = new web3.utils.BN(8000).mul(tokenDecimals);
+  let mockTokenSupply = rewardPoolSize.add(userTokenPoolSize);
   const T = 3600;
+  const smallTimeOffset = T / 100;
 
   beforeEach(async () => {
     let nonce = await web3.eth.getTransactionCount(contractDeployer);
@@ -53,6 +57,135 @@ contract("ERC20Bank", async (accounts) => {
 
   it("its token balance is equal to the reward pool size after bank contract deployment", async () => {
     let bankTokenBalance = await erc20Token.balanceOf(bankContract.address);
-    assert.equal(bankTokenBalance, rewardPoolSize);
+    assert.equal(bankTokenBalance.eq(rewardPoolSize), true);
+  });
+
+  describe("Deposit functionality:", function () {
+    let user = accounts[1];
+
+    beforeEach(async () => {
+      await erc20Token.transfer(user, userTokenPoolSize, {
+        from: contractDeployer,
+      });
+
+      let userBalance = await erc20Token.balanceOf(user);
+      assert.equal(
+        userBalance > new web3.utils.BN(0),
+        true,
+        "User balance is 0. Failed to provide user with tokens to test staking"
+      );
+
+      await erc20Token.approve(bankContract.address, userBalance, {
+        from: user,
+      });
+    });
+
+    it("contract's balance gets increased by the deposit amount after user has deposited", async () => {
+      let bankTokenBalance = await erc20Token.balanceOf(bankContract.address);
+      let userBalance = await erc20Token.balanceOf(user);
+
+      await bankContract.deposit(userBalance, { from: user });
+
+      let updatedBankTokenBalance = await erc20Token.balanceOf(
+        bankContract.address
+      );
+
+      assert.equal(
+        updatedBankTokenBalance > bankTokenBalance,
+        true,
+        "Tokens have not been transfered from user to the contract"
+      );
+    });
+
+    it("user's stake gets increased by the deposited amount", async () => {
+      let userBalance = await erc20Token.balanceOf(user);
+
+      let userStakeBeforeDeposit = await bankContract.stakeOf(user);
+      await bankContract.deposit(userBalance, { from: user });
+
+      let userStake = await bankContract.stakeOf(user);
+
+      let expactedUserStake = userStakeBeforeDeposit.add(userBalance);
+      assert.equal(expactedUserStake.eq(userStake), true);
+    });
+
+    it("user can stake multiple times", async () => {
+      let userBalance = await erc20Token.balanceOf(user);
+      let userStake1 = userBalance.div(new web3.utils.BN(2));
+      let userStake2 = userBalance.sub(userStake1);
+
+      let userStakeBeforeDeposits = await bankContract.stakeOf(user);
+      await bankContract.deposit(userStake1, { from: user });
+
+      let userStakeBalanceAfterStake1 = await bankContract.stakeOf(user);
+
+      assert.equal(
+        userStakeBalanceAfterStake1.eq(userStakeBeforeDeposits.add(userStake1)),
+        true,
+        "User stake balance after stake #1 is incorrect"
+      );
+
+      await bankContract.deposit(userStake2, { from: user });
+
+      let userStake = await bankContract.stakeOf(user);
+
+      let expactedUserStake = userStakeBeforeDeposits
+        .add(userStake1)
+        .add(userStake2);
+      assert.equal(expactedUserStake.eq(userStake), true);
+    });
+
+    it("users cannot deposit after T time has passed since contract deployment", async () => {
+      await utils.advanceTimeAndBlock(T);
+      let userBalance = await erc20Token.balanceOf(user);
+      await truffleAssert.reverts(bankContract.deposit(userBalance, { from: user }));
+    });
+  });
+
+  describe("Withdraw functionality", function () {
+    let user = accounts[1];
+    let R1InitialSize = rewardPoolSize.div(new web3.utils.BN(5));
+    let R3InitialSize = rewardPoolSize.div(new web3.utils.BN(2));
+    let R2InitialSize = rewardPoolSize.sub(R1InitialSize).sub(R3InitialSize);
+    let initialUserBalance;
+
+    beforeEach(async () => {
+      await erc20Token.transfer(user, userTokenPoolSize, {
+        from: contractDeployer,
+      });
+
+      initialUserBalance = userTokenPoolSize;
+
+      await erc20Token.approve(bankContract.address, initialUserBalance, {
+        from: user,
+      });
+    });
+
+    it("Users cannot withdraw tokens before 2T time has passed since contract deployment", async () => {
+      await bankContract.deposit(initialUserBalance, { from: user });
+      await truffleAssert.reverts(bankContract.withdraw({ from: user }));
+    });
+
+    it("Users cannot withdraw if they haven't deposited", async () => {
+      await truffleAssert.reverts(bankContract.withdraw({ from: user }));
+    });
+
+    it("Users can withdraw only R1 reward after 2T time has passed", async () => {
+      let userStake = new web3.utils.BN(100).mul(tokenDecimals);
+      let userBalanceBeforeStake = await erc20Token.balanceOf(user);
+
+      await bankContract.deposit(userStake, { from: user });
+      await utils.advanceTimeAndBlock(2 * T + smallTimeOffset);
+
+      let stakePoolSize = await bankContract.stakePoolSize();
+
+      await bankContract.withdraw({ from: user });
+
+      let userBalanceAfterWithdrawal = await erc20Token.balanceOf(user);
+      let expectedUserReward = userStake.mul(R1InitialSize).div(stakePoolSize);
+      let expectedUserBalance = userBalanceBeforeStake.add(expectedUserReward);
+
+      assert.equal(expectedUserBalance.eq(userBalanceAfterWithdrawal), true);
+    });
   });
 });

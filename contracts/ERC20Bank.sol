@@ -5,9 +5,6 @@ pragma solidity 0.8.10;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-///Starting from solidiy 0.8.0 there is no need to use SafeMath library as all arithmetic is checked by default now
-// import "@openzeppelin/contracts/utils/math/SafeMath.sol";
-
 /**
  * @title ERC20Bank
  * @notice This smart contract enables anyone to deposit an amount X of ERC-20 tokens to their savings (staking) account.
@@ -24,7 +21,7 @@ contract ERC20Bank is Ownable {
     uint256 private R2;
     uint256 private R3;
 
-    uint256 private stakePoolSize;
+    uint256 public stakePoolSize;
 
     mapping(address => uint256) private stakes;
 
@@ -115,7 +112,7 @@ contract ERC20Bank is Ownable {
 
             R1 -= stakingRewardFromR1;
             R2 -= stakingRewardFromR2;
-        } else {
+        } else if (block.timestamp > T0 + 2 * T) {
             stakingRewardFromR1 = _calculateStakingRewardFromRewardPool(R1);
 
             R1 -= stakingRewardFromR1;
@@ -126,6 +123,10 @@ contract ERC20Bank is Ownable {
             stakingRewardFromR3;
 
         tokenContract.transfer(msg.sender, stake + stakingReward);
+    }
+
+    function stakeOf(address account) public view returns (uint256) {
+        return stakes[account];
     }
 
     function _areTokensLocked() private view returns (bool) {
