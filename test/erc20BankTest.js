@@ -1,4 +1,4 @@
-var RLP = require("rlp");
+const contractAddressCalculator = require("../utils/contract_address_calculator.js");
 const utils = require("../utils/utils.js");
 const truffleAssert = require("truffle-assertions");
 
@@ -18,19 +18,19 @@ contract("ERC20Bank", async (accounts) => {
   const smallTimeOffset = T / 100;
 
   beforeEach(async () => {
-    let nonce = await web3.eth.getTransactionCount(contractDeployer);
-    let nonceWhenDeployingBankContract = nonce + 2; //Accounts nonce will be current nonce + 2 because one transaction will take to deploy Test ERC20 contract
-    //and one transaction will be made to approve the address of future bank contract to use particular amount of tokens that will be sent to the reward pool
-    let bankContractAddress =
-      "0x" +
-      web3.utils
-        .sha3(RLP.encode([contractDeployer, nonceWhenDeployingBankContract]))
-        .slice(12)
-        .substring(14);
-
     erc20Token = await MockToken.new(mockTokenSupply, {
       from: contractDeployer,
     });
+
+    let nonce = await web3.eth.getTransactionCount(contractDeployer);
+    let nonceWhenDeployingBankContract = nonce + 1;
+
+    let bankContractAddress =
+      await contractAddressCalculator.calculateContractAddressFromAccountWithNonce(
+        contractDeployer,
+        nonceWhenDeployingBankContract,
+        web3.utils.sha3,
+      );
     await erc20Token.approve(bankContractAddress, rewardPoolSize, {
       from: contractDeployer,
     });
@@ -138,7 +138,9 @@ contract("ERC20Bank", async (accounts) => {
     it("users cannot deposit after T time has passed since contract deployment", async () => {
       await utils.advanceTimeAndBlock(T);
       let userBalance = await erc20Token.balanceOf(user);
-      await truffleAssert.reverts(bankContract.deposit(userBalance, { from: user }));
+      await truffleAssert.reverts(
+        bankContract.deposit(userBalance, { from: user })
+      );
     });
   });
 
@@ -355,9 +357,11 @@ contract("ERC20Bank", async (accounts) => {
         );
 
         await utils.advanceTimeAndBlock(2 * T + smallTimeOffset);
-        await bankContract.withdraw({from: user});
+        await bankContract.withdraw({ from: user });
 
-        await bankContract.withdrawRemainingRewardPool({ from: contractDeployer });
+        await bankContract.withdrawRemainingRewardPool({
+          from: contractDeployer,
+        });
       });
     });
   });

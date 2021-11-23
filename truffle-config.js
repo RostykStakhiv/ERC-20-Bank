@@ -64,16 +64,18 @@ module.exports = {
       gas: 5500000, // Ropsten has a lower block limit than mainnet
       confirmations: 2, // # of confs to wait between deployments. (default: 0)
       timeoutBlocks: 200, // # of blocks before a deployment times out  (minimum/default: 50)
-      skipDryRun: false, // Skip dry run before migrations? (default: false for public nets )
+      skipDryRun: true, // Skip dry run before migrations? (default: false for public nets )
     },
     rinkeby: {
       provider: () =>
-        new HDWalletProvider(secrets.walletPrivateKey, secrets.rinkebyNodeUrl),
+        new HDWalletProvider(secrets.walletPrivateKey, secrets.rinkebyWSNodeUrl),
       network_id: 4, // Rinkeby's id
-      gas: 20000000000,
+      gas: 26000000,
       confirmations: 2,
       timeoutBlocks: 200,
-      skipDryRun: false, // Skip dry run before migrations? (default: false for public nets )
+      gasPrice: 100000000000,
+      websocket: true,
+      skipDryRun: true, // Skip dry run before migrations? (default: false for public nets )
     },
   },
 
