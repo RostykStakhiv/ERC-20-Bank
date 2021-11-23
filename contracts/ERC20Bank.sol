@@ -55,13 +55,6 @@ contract ERC20Bank is Ownable {
         /// We should handle overflow here to avoid the case where contract owner can potentially manipulate the contract in the following way:
         /// If contract owner passes T big enough that it will overflow when we calculate T0 + 4*T they will be able to withdraw reward pool before 4T has passed or before
         /// every user has withdrawn their reward
-        bool hasDepositPeriodPassed = block.timestamp > T0 + T;
-
-        require(
-            hasDepositPeriodPassed,
-            "Owner cannot withdraw before the end of deposit period"
-        );
-
         bool has4Tpassed = block.timestamp > T0 + 4 * T;
         bool haveAllUsersWithdrawn = stakePoolSize == 0;
         bool canOwnerWithdraw = has4Tpassed || haveAllUsersWithdrawn;
@@ -71,7 +64,9 @@ contract ERC20Bank is Ownable {
             "Bank owner cannot withdraw before 4T has passed or before all users have withdrawn"
         );
 
-        tokenContract.transfer(owner(), tokenContract.balanceOf(address(this)));
+        uint256 remainingRewardPool = tokenContract.balanceOf(address(this)) - stakePoolSize;
+
+        tokenContract.transfer(owner(), remainingRewardPool);
     }
 
     function deposit(uint256 amount) public {
@@ -122,6 +117,8 @@ contract ERC20Bank is Ownable {
             stakingRewardFromR2 +
             stakingRewardFromR3;
 
+        stakes[msg.sender] = 0;
+        stakePoolSize -= stake;
         tokenContract.transfer(msg.sender, stake + stakingReward);
     }
 

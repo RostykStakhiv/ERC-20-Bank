@@ -144,9 +144,6 @@ contract("ERC20Bank", async (accounts) => {
 
   describe("Withdraw functionality", function () {
     let user = accounts[1];
-    let R1InitialSize = rewardPoolSize.div(new web3.utils.BN(5));
-    let R3InitialSize = rewardPoolSize.div(new web3.utils.BN(2));
-    let R2InitialSize = rewardPoolSize.sub(R1InitialSize).sub(R3InitialSize);
     let initialUserBalance;
 
     beforeEach(async () => {
@@ -170,22 +167,198 @@ contract("ERC20Bank", async (accounts) => {
       await truffleAssert.reverts(bankContract.withdraw({ from: user }));
     });
 
-    it("Users can withdraw only R1 reward after 2T time has passed", async () => {
+    it("Users cannot withdraw if they have already withdrawn", async () => {
       let userStake = new web3.utils.BN(100).mul(tokenDecimals);
-      let userBalanceBeforeStake = await erc20Token.balanceOf(user);
-
       await bankContract.deposit(userStake, { from: user });
       await utils.advanceTimeAndBlock(2 * T + smallTimeOffset);
 
-      let stakePoolSize = await bankContract.stakePoolSize();
-
       await bankContract.withdraw({ from: user });
+      await truffleAssert.reverts(bankContract.withdraw({ from: user }));
+    });
 
-      let userBalanceAfterWithdrawal = await erc20Token.balanceOf(user);
-      let expectedUserReward = userStake.mul(R1InitialSize).div(stakePoolSize);
-      let expectedUserBalance = userBalanceBeforeStake.add(expectedUserReward);
+    describe("Reward calculation and withdrawal", function () {
+      let userStake = new web3.utils.BN(100).mul(tokenDecimals);
+      let userBalanceBeforeStake;
+      let userBalanceAfterWithdrawal;
+      let stakePoolSize;
 
-      assert.equal(expectedUserBalance.eq(userBalanceAfterWithdrawal), true);
+      let R1InitialSize = rewardPoolSize.div(new web3.utils.BN(5));
+      let R3InitialSize = rewardPoolSize.div(new web3.utils.BN(2));
+      let R2InitialSize = rewardPoolSize.sub(R1InitialSize).sub(R3InitialSize);
+
+      beforeEach(async () => {
+        userBalanceBeforeStake = await erc20Token.balanceOf(user);
+        console.log(
+          "User Balance before stake:",
+          userBalanceBeforeStake.div(tokenDecimals).toString()
+        );
+
+        console.log("User's stake:", userStake.div(tokenDecimals).toString());
+
+        await bankContract.deposit(userStake, { from: user });
+        stakePoolSize = await bankContract.stakePoolSize();
+
+        console.log(
+          "Stake Pool Size: ",
+          stakePoolSize.div(tokenDecimals).toString()
+        );
+      });
+
+      it("User can withdraw only R1 reward if they decide to withdraw in time period from 2T to 3T", async () => {
+        console.log("R1 size: ", R1InitialSize.div(tokenDecimals).toString());
+
+        await utils.advanceTimeAndBlock(2 * T + smallTimeOffset);
+        await bankContract.withdraw({ from: user });
+
+        userBalanceAfterWithdrawal = await erc20Token.balanceOf(user);
+        console.log(
+          "User balance after withdrawal: ",
+          userBalanceAfterWithdrawal.div(tokenDecimals).toString()
+        );
+
+        let expectedUserReward = userStake
+          .mul(R1InitialSize)
+          .div(stakePoolSize);
+
+        console.log(
+          "Expected user reward: ",
+          expectedUserReward.div(tokenDecimals).toString()
+        );
+        let expectedUserBalance =
+          userBalanceBeforeStake.add(expectedUserReward);
+
+        assert.equal(expectedUserBalance.eq(userBalanceAfterWithdrawal), true);
+      });
+
+      it("User can withdraw R1 and R2 reward if they decide to withdraw in time period from 3T to 4T", async () => {
+        console.log("R1 size: ", R1InitialSize.div(tokenDecimals).toString());
+        console.log("R2 size: ", R2InitialSize.div(tokenDecimals).toString());
+
+        await utils.advanceTimeAndBlock(3 * T + smallTimeOffset);
+        await bankContract.withdraw({ from: user });
+
+        userBalanceAfterWithdrawal = await erc20Token.balanceOf(user);
+        console.log(
+          "User Balance after withdrawal:",
+          userBalanceAfterWithdrawal.div(tokenDecimals).toString()
+        );
+        let R1expectedUserReward = userStake
+          .mul(R1InitialSize)
+          .div(stakePoolSize);
+        let R2expectedUserReward = userStake
+          .mul(R2InitialSize)
+          .div(stakePoolSize);
+
+        let expectedUserReward = R1expectedUserReward.add(R2expectedUserReward);
+        console.log(
+          "Expected user reward: ",
+          expectedUserReward.div(tokenDecimals).toString()
+        );
+
+        let expectedUserBalance =
+          userBalanceBeforeStake.add(expectedUserReward);
+        assert.equal(expectedUserBalance.eq(userBalanceAfterWithdrawal), true);
+      });
+
+      it("User can withdraw R1, R2 and R3 reward if they decide to withdraw in time period after 4T", async () => {
+        console.log("R1 size: ", R1InitialSize.div(tokenDecimals).toString());
+        console.log("R2 size: ", R2InitialSize.div(tokenDecimals).toString());
+        console.log("R3 size: ", R3InitialSize.div(tokenDecimals).toString());
+
+        await utils.advanceTimeAndBlock(4 * T + smallTimeOffset);
+        await bankContract.withdraw({ from: user });
+
+        userBalanceAfterWithdrawal = await erc20Token.balanceOf(user);
+        console.log(
+          "User Balance after withdrawal:",
+          userBalanceAfterWithdrawal.div(tokenDecimals).toString()
+        );
+        let R1expectedUserReward = userStake
+          .mul(R1InitialSize)
+          .div(stakePoolSize);
+        let R2expectedUserReward = userStake
+          .mul(R2InitialSize)
+          .div(stakePoolSize);
+        let R3expectedUserReward = userStake
+          .mul(R3InitialSize)
+          .div(stakePoolSize);
+
+        let expectedUserReward =
+          R1expectedUserReward.add(R2expectedUserReward).add(
+            R3expectedUserReward
+          );
+        console.log(
+          "Expected user reward: ",
+          expectedUserReward.div(tokenDecimals).toString()
+        );
+
+        let expectedUserBalance =
+          userBalanceBeforeStake.add(expectedUserReward);
+        assert.equal(expectedUserBalance.eq(userBalanceAfterWithdrawal), true);
+      });
+
+      it("Only bank owner can withdraw the remaining reward pool", async () => {
+        await utils.advanceTimeAndBlock(4 * T + smallTimeOffset);
+
+        //user is not bank owner so this call should fail
+        await truffleAssert.reverts(
+          bankContract.withdrawRemainingRewardPool({ from: user }),
+          _,
+          "Account that is not a bank owner has been able to withdraw remaining reward pool"
+        );
+      });
+
+      it("Bank owner is able to withdraw the remaining reward pool after 4T has passed", async () => {
+        await utils.advanceTimeAndBlock(4 * T + smallTimeOffset);
+
+        let bankOwnerBalanceBeforeRewardPoolWithdrawal =
+          await erc20Token.balanceOf(contractDeployer);
+
+        console.log(
+          "Bank contract owner's balance before withdrawal: ",
+          bankOwnerBalanceBeforeRewardPoolWithdrawal
+            .div(tokenDecimals)
+            .toString()
+        );
+
+        await bankContract.withdrawRemainingRewardPool({
+          from: contractDeployer,
+        });
+
+        let bankOwnerBalanceAfterRewardPoolWithdrawal =
+          await erc20Token.balanceOf(contractDeployer);
+
+        console.log(
+          "Bank contract owner's balance after withdrawal: ",
+          bankOwnerBalanceAfterRewardPoolWithdrawal
+            .div(tokenDecimals)
+            .toString()
+        );
+
+        let expectedBankOwnerBalance =
+          bankOwnerBalanceBeforeRewardPoolWithdrawal.add(rewardPoolSize);
+
+        assert.equal(
+          expectedBankOwnerBalance.cmp(
+            bankOwnerBalanceAfterRewardPoolWithdrawal
+          ),
+          0,
+          "Bank owner should only be able to withdraw the remaining reward pool"
+        );
+      });
+
+      it("Bank owner cannot withdraw remaining reward pool until 4T time has passed if some users have not withdrawn yet", async () => {
+        await truffleAssert.reverts(
+          bankContract.withdrawRemainingRewardPool({ from: contractDeployer }),
+          _,
+          "Bank owner IS ABLE TO WITHDRAW reward pool even if SOME USERS HAVE NOT WITHDRAWN yet"
+        );
+
+        await utils.advanceTimeAndBlock(2 * T + smallTimeOffset);
+        await bankContract.withdraw({from: user});
+
+        await bankContract.withdrawRemainingRewardPool({ from: contractDeployer });
+      });
     });
   });
 });
