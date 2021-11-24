@@ -3,7 +3,7 @@ let contractAddressCalculator = require("../utils/contract_address_calculator.js
 
 const ERC20Bank = artifacts.require("ERC20Bank");
 const ERC20 = artifacts.require("ERC20");
-const RinkebyATRACContractAddress =
+const RinkebyTRACContractAddress =
   "0x98d9a611ad1b5761bdc1daac42c48e4d54cf5882";
 const RinkebyRUSDContractAddress = "0x78052C14713a1fd5861c2Fd63A441ea2145BD76c";
 const RopstenRUSDContractAddress = "0x8f84903e119cd09637BD897a7524E93Bef8904D3";
@@ -17,7 +17,7 @@ module.exports = async function (deployer, network, accounts) {
   if (network == "development") {
     return;
   } else if (network == "rinkeby") {
-    erc20TokenContractAddress = RinkebyRUSDContractAddress;
+    erc20TokenContractAddress = RinkebyTRACContractAddress;
   } else if (network == "ropsten") {
     erc20TokenContractAddress = RopstenRUSDContractAddress;
   }
